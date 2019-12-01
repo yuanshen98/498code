@@ -7,6 +7,51 @@ namespace mxnet
 {
 namespace op
 {
+__global__ void forward_kernel1(float *A, float *B, float *C,
+                                     int numARows, int numAColumns,
+                                     int numBRows, int numBColumns,
+                                     int numCRows, int numCColumns) {
+  //@@ Insert code to implement matrix multiplication here
+  //@@ You have to use shared memory for this MP\
+  //__device__ __shared__ int TILE_WIDTH = 32;
+  __shared__ float subTileA[32][32];
+  __shared__ float subTileB[32][32];
+  
+  int bx = blockIdx.x;
+  int by = blockIdx.y;
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
+  
+  int Row = by * 32 + ty;
+  int Col = bx * 32 + tx;
+  float Pvalue = 0;
+  
+  int tiles = numAColumns/32;
+  if (numAColumns%32) tiles++;
+  
+  for (int m=0; m<tiles; ++m){
+    if((Row < numARows) && ((m*32+tx)<numAColumns)) {
+      subTileA[ty][tx] = A[Row*numAColumns + m*32 + tx];
+    }
+    else{
+      subTileA[ty][tx] = 0;
+    }
+    if ((Col < numBColumns) && ((m*32 + ty)<numBRows)){
+      subTileB[ty][tx] = B[(m*32+ty)*numBColumns + Col];
+    }
+    else {
+      subTileB[ty][tx] = 0;
+    }
+      __syncthreads();
+      for (int k = 0;k<32;++k){
+        Pvalue += subTileA[ty][k] * subTileB[k][tx];
+      }
+      __syncthreads();
+    }
+  if (Row < numCRows && Col < numCColumns){
+  C[Row*numCColumns+Col] = Pvalue;
+  }
+}
 
 __global__ void forward_kernel(float *y, const float *x, const float *k, const int B, const int M, const int C, const int H, const int W, const int K)
 {
@@ -65,13 +110,23 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int H = x.shape_[2];
     const int W = x.shape_[3];
     const int K = w.shape_[3];
-
-    dim3 gridDim((B + 511) / 512);
-    dim3 blockDim(512);
+    //unroll X
+    const int W_out = W-K+1;
+    const int H_out = H-K+1;
+    const int W_unroll = C*K*K;
+    const int H_unroll = H_out * W_out;
+    float* X_unrolled = malloc(W_unroll * H_unroll * sizeof(float));
+    for (int b=0; b<B; b++){
+    unroll(C, H, W, K, x.dptr_, X_unroll);
+    dim3 gridDim(ceil(H_unroll/32),ceil(M/32));
+    dim3 blockDim(32,32);
 
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
-    forward_kernel<<<gridDim, blockDim>>>(y.dptr_, x.dptr_, w.dptr_, B, M, C, H, W, K);
+    forward_kernel1<<<gridDim,blockDim>>>(w.dptr_, X_unroll, y[b].dptr_, M, C*K*K, C*K*K, H_out*W_out, M, H_out*W_out);
+    //forward_kernel<<<gridDim, blockDim>>>(y.dptr_, x.dptr_, w.dptr_, B, M, C, H, W, K);
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
+    }
+    free(X_unrolled);
 }
 
 /* 
