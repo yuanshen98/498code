@@ -133,13 +133,13 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int H_unroll = H_out * W_out;
     float* X_unroll = (float*)malloc(W_unroll * H_unroll * sizeof(float));
     for (int b=0; b<B; b++){
-    unroll(C, H, W, K, x.dptr_+b*C*H*W*sizeof(float), X_unroll);
+    unroll(C, H, W, K, x.dptr_+b*C*H*W, X_unroll);
     printf
     dim3 gridDim(ceil(H_unroll/32),ceil(M/32));
     dim3 blockDim(32,32);
 
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
-    forward_kernel1<<<gridDim,blockDim>>>(w.dptr_, X_unroll, y.dptr_+b*M*H_out*W_out*sizeof(float), M, C*K*K, C*K*K, H_out*W_out, M, H_out*W_out);
+    forward_kernel1<<<gridDim,blockDim>>>(w.dptr_, X_unroll, y.dptr_+b*M*H_out*W_out, M, C*K*K, C*K*K, H_out*W_out, M, H_out*W_out);
  	   //forward_kernel<<<gridDim, blockDim>>>(y.dptr_, x.dptr_, w.dptr_, B, M, C, H, W, K);
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
     }
