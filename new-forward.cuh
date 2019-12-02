@@ -91,7 +91,23 @@ __global__ void forward_kernel(float *y, const float *x, const float *k, const i
 #undef x4d
 #undef k4d
 }
-
+void unroll(int C, int H, int W, int K, float* X, float* X_unrolled){
+    int H_out = H-K+1;
+    int W_out = W-K+1;
+    for (int c=0; c<C; ++c){
+        for (int p =0; p<K; p++){
+            for (int q=0; q<K; q++){
+                for (int h=0; h<H_out; h++){
+                    for (int w=0; w<W_out; w++){
+                        int unroll_col_index = h*W_out + w;
+                        int unroll_row_index = c*K*K + p*K+ q;
+                        X_unrolled[unroll_row_index*H_out*W_out+unroll_col_index] = X[c*H*W+(h+p)*W+(w+q)];
+                    }
+                }
+            }
+        }
+    }
+}
 /* 
    This function is called by new-inl.h
    Any code you write should be executed by this function.
@@ -115,18 +131,19 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int H_out = H-K+1;
     const int W_unroll = C*K*K;
     const int H_unroll = H_out * W_out;
-    float* X_unrolled = malloc(W_unroll * H_unroll * sizeof(float));
+    float* X_unroll = (float*)malloc(W_unroll * H_unroll * sizeof(float));
     for (int b=0; b<B; b++){
-    unroll(C, H, W, K, x.dptr_, X_unroll);
+    unroll(C, H, W, K, x.dptr_+b*C*H*W*sizeof(float), X_unroll);
+    printf
     dim3 gridDim(ceil(H_unroll/32),ceil(M/32));
     dim3 blockDim(32,32);
 
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
-    forward_kernel1<<<gridDim,blockDim>>>(w.dptr_, X_unroll, y[b].dptr_, M, C*K*K, C*K*K, H_out*W_out, M, H_out*W_out);
-    //forward_kernel<<<gridDim, blockDim>>>(y.dptr_, x.dptr_, w.dptr_, B, M, C, H, W, K);
+    forward_kernel1<<<gridDim,blockDim>>>(w.dptr_, X_unroll, y.dptr_+b*M*H_out*W_out*sizeof(float), M, C*K*K, C*K*K, H_out*W_out, M, H_out*W_out);
+ 	   //forward_kernel<<<gridDim, blockDim>>>(y.dptr_, x.dptr_, w.dptr_, B, M, C, H, W, K);
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
     }
-    free(X_unrolled);
+    free(X_unroll);
 }
 
 /* 
