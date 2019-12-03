@@ -91,7 +91,7 @@ __global__ void forward_kernel(float *y, const float *x, const float *k, const i
 #undef x4d
 #undef k4d
 }
-void unroll(int C, int H, int W, int K, float* X, float* X_unrolled){
+void unroll(int C, int H, int W, int K, const float* X, float* X_unrolled){
     std::cout<<"Call Unroll  function\n";
     std::cout<<"C, H, W, K "<<C<<" "<<H<<" "<<W<<" "<<K<<" \n";
     int H_out = H-K+1;
