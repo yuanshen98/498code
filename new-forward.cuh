@@ -93,7 +93,7 @@ __global__ void forward_kernel(float *y, const float *x, const float *k, const i
 }
 void unroll(int C, int H, int W, int K, float* X, float* X_unrolled){
     std::cout<<"Call Unroll  function\n";
-    std::cout<<"C, H, W, K"<<C<<" "<<H<<" "<<W<<" "<<K<<" \n";
+    std::cout<<"C, H, W, K "<<C<<" "<<H<<" "<<W<<" "<<K<<" \n";
     int H_out = H-K+1;
     int W_out = W-K+1;
     for (int c=0; c<C; ++c){
@@ -105,8 +105,9 @@ void unroll(int C, int H, int W, int K, float* X, float* X_unrolled){
                         //int unroll_row_index = c*K*K + p*K+ q;
                         int unroll_row_index = h*W_out + w;
                         int unroll_col_index = c*K*K + p*K+ q;
-                        std::cout<<"Accessing ["<<unroll_row_index<<", "<<unroll_col_index<<"] of X_unroll\n";
                         std::cout<<"Accessing ["<<c<<", "<<h+p<<", "<<w+q<<"] of X\n";
+                        std::cout<<"The number is "<<X[c*H*W+(h+p)*W+(w+q)]<<"\n";
+                        std::cout<<"Accessing ["<<unroll_row_index<<", "<<unroll_col_index<<"] of X_unroll\n";
                         X_unrolled[unroll_row_index*H_out*W_out+unroll_col_index] = X[c*H*W+(h+p)*W+(w+q)];
                     }
                 }
@@ -138,11 +139,11 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int W_unroll = C*K*K;
     const int H_unroll = H_out * W_out;
     float* X_unroll = (float*)malloc(W_unroll * H_unroll * sizeof(float));
-    cout<<"Starting for loop\n";
+    std::cout<<"Starting for loop\n";
     for (int b=0; b<B; b++){
-    cout<<"Start Unrolling\n";
+    std::cout<<"Start Unrolling\n";
     unroll(C, H, W, K, x.dptr_+b*C*H*W, X_unroll);
-    cout<<"Unroll finished\n";
+    std::cout<<"Unroll finished\n";
     dim3 gridDim(ceil(H_unroll/32),ceil(M/32));
     dim3 blockDim(32,32);
 
