@@ -136,9 +136,9 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     float* X_unroll = (float*)malloc(W_unroll * H_unroll * sizeof(float));
     cout<<"Starting for loop\n";
     for (int b=0; b<B; b++){
-    cout<<"Start Unrolling";
+    cout<<"Start Unrolling\n";
     unroll(C, H, W, K, x.dptr_+b*C*H*W, X_unroll);
-    cout<<"Unroll finished";
+    cout<<"Unroll finished\n";
     dim3 gridDim(ceil(H_unroll/32),ceil(M/32));
     dim3 blockDim(32,32);
 
