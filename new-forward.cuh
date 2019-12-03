@@ -99,8 +99,10 @@ void unroll(int C, int H, int W, int K, float* X, float* X_unrolled){
             for (int q=0; q<K; q++){
                 for (int h=0; h<H_out; h++){
                     for (int w=0; w<W_out; w++){
-                        int unroll_col_index = h*W_out + w;
-                        int unroll_row_index = c*K*K + p*K+ q;
+                        //int unroll_col_index = h*W_out + w;
+                        //int unroll_row_index = c*K*K + p*K+ q;
+                        int unroll_row_index = h*W_out + w;
+                        int unroll_col_index = c*K*K + p*K+ q;
                         X_unrolled[unroll_row_index*H_out*W_out+unroll_col_index] = X[c*H*W+(h+p)*W+(w+q)];
                     }
                 }
@@ -132,9 +134,11 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int W_unroll = C*K*K;
     const int H_unroll = H_out * W_out;
     float* X_unroll = (float*)malloc(W_unroll * H_unroll * sizeof(float));
+    cout<<"Starting for loop\n";
     for (int b=0; b<B; b++){
+    cout<<"Start Unrolling";
     unroll(C, H, W, K, x.dptr_+b*C*H*W, X_unroll);
-    printf
+    cout<<"Unroll finished";
     dim3 gridDim(ceil(H_unroll/32),ceil(M/32));
     dim3 blockDim(32,32);
 
