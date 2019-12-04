@@ -89,6 +89,7 @@ __global__ void forward_kernel(float *y, const float *x, const float *k, const i
 #undef x4d
 #undef k4d
 }
+/*
 void unroll(int C, int H, int W, int K, float* X, float* X_unrolled){
     std::cout<<"Call Unroll  function\n";
     std::cout<<"C, H, W, K "<<C<<" "<<H<<" "<<W<<" "<<K<<" \n";
@@ -113,11 +114,36 @@ void unroll(int C, int H, int W, int K, float* X, float* X_unrolled){
         }
     }
 }
+*/
 /* 
    This function is called by new-inl.h
    Any code you write should be executed by this function.
    We only expect the float version of the operator to be called, so here we specialize with only floats.
 */
+  
+__global__ void unroll(int C, int H, int W, int K, float* X, float* X_unroll){
+int c, s, h_out, w_out, h_unroll, w_base, p, q;
+int t = blockIdx.x * blockDim.x +threadIdx.x;
+int H_out = H - K +1;
+int W_out = W- K +1 ;
+int W_unroll = H_out * W_out;
+
+if (t<C*W_unroll){
+c = t/W_unroll;
+s = t % W_unroll;
+h_out = s/W_out;
+w_out = s % W_out;
+w_unroll = h_out * W_out + w_out;
+w_base = C*K*K;
+for (p=0; p<K; p++){
+    for (q=0; q<K; q++){
+      h_unroll = w_base + p * K +q;
+      X_unroll[h_unroll*H_out*W_out+w_unroll] = X[c*H*W+(h_out+p)*W+(w_out+q)];
+      }
+    }
+  }
+}
+  
 template <>
 void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tensor<gpu, 4, float> &x, const mshadow::Tensor<gpu, 4, float> &w)
 {
@@ -137,20 +163,13 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int W_unroll = C*K*K;
     const int H_unroll = H_out * W_out;
     float* X_unroll = (float*)malloc(W_unroll * H_unroll * sizeof(float));
-    float* test = x.dptr_;
-    std::cout<<"Start testing\n";
-    for (int i =0; i<5, i++){
-    std::cout<<"X["<<i<<"] is "<<test[i]<<"\n";
-    }
-    std::cout<<"Starting for loop\n";
     for (int b=0; b<B; b++){
-    std::cout<<"Start Unrolling\n";
-    float* test2 = x.dptr_b*C*H*W;
-    for (int i=0; i<5; i++){
-    std::cout<<test2[i]<<"\n";
-    }
-    unroll(C, H, W, K, x.dptr_+b*C*H*W, X_unroll);
-    std::cout<<"Unroll finished\n";
+    dim3 gridDim1(1,1,1);
+    dim3 blockDim1(512,1,1);
+    MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
+    unroll<<<gridDim1,blockDim1>>>(C, H, W, K, x.dptr_+b*C*H*W, X_unroll);
+    MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
+      
     dim3 gridDim(ceil(H_unroll/32),ceil(M/32));
     dim3 blockDim(32,32);
 
