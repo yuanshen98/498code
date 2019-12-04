@@ -137,7 +137,8 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int W_unroll = C*K*K;
     const int H_unroll = H_out * W_out;
     float* X_unroll = (float*)malloc(W_unroll * H_unroll * sizeof(float));
-    const float* test = x.dptr_;
+    float* test = x.dptr_;
+    std::cout<<"Start testing\n";
     for (int i =0; i<5, i++){
     std::cout<<"X["<<i<<"] is "<<test[i]<<"\n";
     }
