@@ -89,6 +89,7 @@ __global__ void forward_kernel(float *y, const float *x, const float *k, const i
 #undef x4d
 #undef k4d
 }
+/*
 void unroll(int C, int H, int W, int K, float* X, float* X_unrolled){
     std::cout<<"Call Unroll  function\n";
     std::cout<<"C, H, W, K "<<C<<" "<<H<<" "<<W<<" "<<K<<" \n";
@@ -113,11 +114,36 @@ void unroll(int C, int H, int W, int K, float* X, float* X_unrolled){
         }
     }
 }
+*/
 /* 
    This function is called by new-inl.h
    Any code you write should be executed by this function.
    We only expect the float version of the operator to be called, so here we specialize with only floats.
 */
+  
+__global__ void unroll(int C, int H, int W, int K, float* X, float* X_unroll){
+int c, s, h_out, w_out, w_unroll, h_unroll, w_base, p, q;
+int t = blockIdx.x * blockDim.x +threadIdx.x;
+int H_out = H - K +1;
+int W_out = W- K +1 ;
+int W_unroll = H_out * W_out;
+
+if (t<C*W_unroll){
+c = t/W_unroll;
+s = t % W_unroll;
+h_out = s/W_out;
+w_out = s % W_out;
+h_unroll = h_out * W_out + w_out;
+w_base = C*K*K;
+for (p=0; p<K; p++){
+    for (q=0; q<K; q++){
+      w_unroll = w_base + p * K +q;
+      X_unroll[h_unroll*H_out*W_out+w_unroll] = X[c*H*W+(h_out+p)*W+(w_out+q)];
+      }
+    }
+  }
+}
+  
 template <>
 void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tensor<gpu, 4, float> &x, const mshadow::Tensor<gpu, 4, float> &w)
 {
@@ -137,25 +163,33 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int W_unroll = C*K*K;
     const int H_unroll = H_out * W_out;
     float* X_unroll = (float*)malloc(W_unroll * H_unroll * sizeof(float));
-    float* test = x.dptr_;
-    std::cout<<"Start testing\n";
-    for (int i =0; i<5, i++){
-    std::cout<<"X["<<i<<"] is "<<test[i]<<"\n";
-    }
-    std::cout<<"Starting for loop\n";
     for (int b=0; b<B; b++){
-    std::cout<<"Start Unrolling\n";
-    float* test2 = x.dptr_b*C*H*W;
-    for (int i=0; i<5; i++){
-    std::cout<<test2[i]<<"\n";
-    }
-    unroll(C, H, W, K, x.dptr_+b*C*H*W, X_unroll);
-    std::cout<<"Unroll finished\n";
-    dim3 gridDim(ceil(H_unroll/32),ceil(M/32));
-    dim3 blockDim(32,32);
+    float* dev_X;
+        float* dev_X_out;
+
+        //cudaSetDevice(0);
+        cudaMalloc((void**)&dev_X, (size_t)(H*W*C * sizeof(float)));
+        cudaMalloc((void**)&dev_X_out, (size_t)((H-K+1)*(W-K+1)*K*K*C*sizeof(float)));
+
+        cudaMemcpy(dev_X, x.dptr_+b*C*H*W, (size_t)(H*W*C * sizeof(float)), cudaMemcpyHostToDevice);
+
+        dim3 blockDim(H*W*C, 1, 1);
+        dim3 gridDim(1, 1, 1);
+    MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
+       
+ unroll << <gridDim, blockDim >> > (C, H, W, K, dev_X, dev_X_out);
+    MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
+
+
+        cudaMemcpy(X_unroll, dev_X_out, (size_t)((H - K + 1)*(W - K + 1)*K*K*C * sizeof(float)), cudaMemcpyDeviceToHost);
+        cudaFree(dev_X);
+        cudaFree(dev_X_out);
+      
+    dim3 gridDim1(ceil(H_unroll/32),ceil(M/32));
+    dim3 blockDim1(32,32);
 
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
-    forward_kernel1<<<gridDim,blockDim>>>(w.dptr_, X_unroll, y.dptr_+b*M*H_out*W_out, M, C*K*K, C*K*K, H_out*W_out, M, H_out*W_out);
+    forward_kernel1<<<gridDim1,blockDim1>>>(w.dptr_, X_unroll, y.dptr_+b*M*H_out*W_out, M, C*K*K, C*K*K, H_out*W_out, M, H_out*W_out);
  	   //forward_kernel<<<gridDim, blockDim>>>(y.dptr_, x.dptr_, w.dptr_, B, M, C, H, W, K);
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
     }
