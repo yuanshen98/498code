@@ -11,9 +11,7 @@ __global__ void forward_kernel1(float *A, float *B, float *C,
                                      int numARows, int numAColumns,
                                      int numBRows, int numBColumns,
                                      int numCRows, int numCColumns) {
-  //@@ Insert code to implement matrix multiplication here
-  //@@ You have to use shared memory for this MP\
-  //__device__ __shared__ int TILE_WIDTH = 32;
+
   __shared__ float subTileA[32][32];
   __shared__ float subTileB[32][32];
   
@@ -91,7 +89,7 @@ __global__ void forward_kernel(float *y, const float *x, const float *k, const i
 #undef x4d
 #undef k4d
 }
-void unroll(int C, int H, int W, int K, const float* X, float* X_unrolled){
+void unroll(int C, int H, int W, int K, float* X, float* X_unrolled){
     std::cout<<"Call Unroll  function\n";
     std::cout<<"C, H, W, K "<<C<<" "<<H<<" "<<W<<" "<<K<<" \n";
     int H_out = H-K+1;
@@ -139,9 +137,17 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int W_unroll = C*K*K;
     const int H_unroll = H_out * W_out;
     float* X_unroll = (float*)malloc(W_unroll * H_unroll * sizeof(float));
+    const float* test = x.dptr_;
+    for (int i =0; i<5, i++){
+    std::cout<<"X["<<i<<"] is "<<test[i]<<"\n";
+    }
     std::cout<<"Starting for loop\n";
     for (int b=0; b<B; b++){
     std::cout<<"Start Unrolling\n";
+    float* test2 = x.dptr_b*C*H*W;
+    for (int i=0; i<5; i++){
+    std::cout<<test2[i]<<"\n";
+    }
     unroll(C, H, W, K, x.dptr_+b*C*H*W, X_unroll);
     std::cout<<"Unroll finished\n";
     dim3 gridDim(ceil(H_unroll/32),ceil(M/32));
