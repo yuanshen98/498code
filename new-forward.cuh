@@ -252,7 +252,5 @@ void forward(mshadow::Tensor<gpu, 4, DType> &y, const mshadow::Tensor<gpu, 4, DT
 {
     assert(0 && "No forward implementation for other datatypes needed");
 }
-}
-}
 
 #endif
