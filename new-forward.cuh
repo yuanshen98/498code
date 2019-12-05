@@ -146,7 +146,7 @@ __global__ void unrollKernel(int C, int H, int W, int K, float* X, float* X_out)
 #define TILE_WIDTH 32
 #define TILE_WIDTH_FLOAT 32.0
 
-__global__ void matrixMultiplyShared(float *A, float *B, float *C,
+__global__ void matrixMultiplyShared(float *B, float *C,
 	int numARows, int numAColumns,
 	int numBRows, int numBColumns,
 	int numCRows, int numCColumns) {
@@ -170,7 +170,7 @@ __global__ void matrixMultiplyShared(float *A, float *B, float *C,
 
 		//each thread loads its bit
 		if (row * numAColumns + i * TILE_WIDTH + threadIdx.x < numARows*numAColumns) {
-			subTileA[threadIdx.y][threadIdx.x] = A[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
+			subTileA[threadIdx.y][threadIdx.x] = weights[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
 			//subTileB[threadIdx.y][threadIdx.x] = B[(i * TILE_WIDTH + threadIdx.y) * numBColumns + col];
 			//printf("%d, %d, %d, %d, %f\n", row, i, threadIdx.y, threadIdx.x, A[row * numAColumns + i * TILE_WIDTH + threadIdx.x]);
 		}
@@ -210,11 +210,13 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int H = x.shape_[2];
     const int W = x.shape_[3];
     const int K = w.shape_[3];
+    __constant__ float weights[M*C*K*K];
+    MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
 
 	float* dev_X_out;
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
 	MSHADOW_CUDA_CALL(cudaMalloc((void**)&dev_X_out, (size_t)((H - K + 1)*(W - K + 1)*K*K*C * sizeof(float))));
-
+	
 	dim3 unrollBlockDim(1024, 1, 1);
 	dim3 unrollGridDim(ceilf(H*W*C/1024.0), 1, 1);
 
@@ -232,7 +234,7 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
 		unrollKernel << < unrollGridDim, unrollBlockDim >> > (C, H, W, K, x.dptr_ + b*H*W*C, dev_X_out);
 
 		//multiply first by second
-		matrixMultiplyShared << < mulGridDim, mulBlockDim >> > (w.dptr_, dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
+		matrixMultiplyShared << < mulGridDim, mulBlockDim >> > (dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
 	}
 
     //forward_kernel1<<<gridDim1,blockDim1>>>(w.dptr_, X_unroll, y.dptr_+b*M*H_out*W_out, M, C*K*K, C*K*K, H_out*W_out, M, H_out*W_out);
