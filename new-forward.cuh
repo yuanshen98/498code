@@ -216,8 +216,8 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
 	MSHADOW_CUDA_CALL(cudaMalloc((void**)&dev_X_out, (size_t)((H - K + 1)*(W - K + 1)*K*K*C * sizeof(float))));
 	printf("cudaMalloc");
 
-	dim3 unrollBlockDim(H*W*C, 1, 1);
-	dim3 unrollGridDim(1, 1, 1);
+	dim3 unrollBlockDim(1024, 1, 1);
+	dim3 unrollGridDim(ceilf(H*W*C/1024.0), 1, 1);
 
 	const int inner_dim = K*K*C;
 
