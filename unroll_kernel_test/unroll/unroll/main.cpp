@@ -4,57 +4,47 @@
 #include <stdio.h>
 #include <chrono>
 #include <iostream>
-#include "unroll.cuh"
+#include <stdlib.h>
+#include "compare.cuh"
 
 int main()
 {
 
-	const int C = 3;
-	const int H = 3;
-	const int W = 3;
+	const int C = 4;
+	const int H = 10;
+	const int W = 10;
 	const int M = 2;
-	const int K = 2;
+	const int K = 5;
+	const int B = 6;
 
-	float X[C*H*W] = { 1,2,0,
-		1,1,3,
-		0,2,2,
-		0,2,1,
-		0,3,2,
-		1,1,0,
-		1,2,1,
-		0,1,3,
-		3,3,2 };
+	const int H_out = H - K + 1;
+	const int W_out = W - K + 1;
 
-	float X_out[(H - K + 1)*(W - K + 1)*K*K*C] = { 0 };
-	float X_out_cpu[(H - K + 1)*(W - K + 1)*K*K*C] = { 0 };
+	float x[C*H*W*B];
+	float k[K*K*M*C];
+	float y_1[B*M*H_out*W_out];
+	float y_2[B*M*H_out*W_out];
 
-	auto startGpu = std::chrono::high_resolution_clock::now();
-	unrollWithCuda(&X[0], &X_out[0], C, H, W, K);
-	auto stopGpu = std::chrono::high_resolution_clock::now();
-	unrollWithCpu(&X[0], &X_out_cpu[0], C, H, W, K);
-	auto stopCpu = std::chrono::high_resolution_clock::now();
+	//generate random test data between 1 and 10 with int truncation
+	srand(0);
 
-	std::chrono::duration<double> gpuElapsed = stopGpu - startGpu;
-	std::chrono::duration<double> cpuElapsed = stopCpu - stopGpu;
-
-	std::cout << "GPU time: " << gpuElapsed.count() << std::endl;
-	std::cout << "CPU time: " << cpuElapsed.count() << std::endl;
-
-	/*
-	for (int i = 0; i <  K*K*C; i++) {
-		for (int j = 0; j <(H - K + 1)*(W - K + 1); j++) {
-			printf("%f ", X_out[i*(H - K + 1)*(W - K + 1) + j]);
-		}
-		printf("\n");
+	for (int i = 0; i < C*H*W*B; i++) {
+		x[i] = (float)((int)(rand() % 10));
 	}
-	printf("\n");
-	for (int i = 0; i < K*K*C; i++) {
-		for (int j = 0; j <(H - K + 1)*(W - K + 1); j++) {
-			printf("%f ", X_out_cpu[i*(H - K + 1)*(W - K + 1) + j]);
-		}
-		printf("\n");
+	for (int i = 0; i < K*K*M*C; i++) {
+		k[i] = (float)((int)(rand() % 10));
 	}
-	*/
+
+	auto timeLoopStart = std::chrono::high_resolution_clock::now();
+	forwardWithLoop(y_1, x, k, B, M, C, H, W, K);
+	auto timeLoopEnd = std::chrono::high_resolution_clock::now();
+	forwardWithMatmul(y_2, x, k, B, M, C, H, W, K);
+	auto timeMulEnd = std::chrono::high_resolution_clock::now();
+
+	auto loopTime = timeLoopEnd - timeLoopStart;
+	auto mulTime = timeMulEnd - timeLoopEnd;
+	std::cout << "Loop Time: " << loopTime.count() << std::endl;
+	std::cout << "MatMul Time: " << mulTime.count() << std::endl;
 
 	// cudaDeviceReset must be called before exiting in order for profiling and
 	// tracing tools such as Nsight and Visual Profiler to show complete traces.
@@ -64,5 +54,13 @@ int main()
 		return 1;
 	}
 
+	for (int i = 0; i < B*M*H_out*W_out; i++) {
+		if (abs(y_1[i] - y_2[i]) > 0.0001) {
+			printf("%d %f %f\n", i, y_1[i], y_2[i]);
+		}
+	}
+	printf("done!");
+
 	return 0;
 }
+
