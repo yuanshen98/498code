@@ -7,6 +7,7 @@ namespace mxnet
 {
 namespace op
 {
+/*
 __global__ void forward_kernel1(float *A, float *B, float *C,
                                      int numARows, int numAColumns,
                                      int numBRows, int numBColumns,
@@ -50,7 +51,7 @@ __global__ void forward_kernel1(float *A, float *B, float *C,
   C[Row*numCColumns+Col] = Pvalue;
   }
 }
-
+*/
 __global__ void forward_kernel(float *y, const float *x, const float *k, const int B, const int M, const int C, const int H, const int W, const int K)
 {
 
@@ -239,7 +240,7 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
 	MSHADOW_CUDA_CALL(cudaFree(dev_X_out));
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
 
-    }
+    
     //free(X_unroll);
 }
 
@@ -252,5 +253,6 @@ void forward(mshadow::Tensor<gpu, 4, DType> &y, const mshadow::Tensor<gpu, 4, DT
 {
     assert(0 && "No forward implementation for other datatypes needed");
 }
-
+}
+}
 #endif
