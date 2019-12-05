@@ -170,7 +170,7 @@ __global__ void matrixMultiplyShared(float *A, float *B, float *C,
 
 		//each thread loads its bit
 		if (row * numAColumns + i * TILE_WIDTH + threadIdx.x < numARows*numAColumns) {
-			subTileA[threadIdx.y][threadIdx.x] = weights[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
+			subTileA[threadIdx.y][threadIdx.x] = A[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
 			//subTileB[threadIdx.y][threadIdx.x] = B[(i * TILE_WIDTH + threadIdx.y) * numBColumns + col];
 			//printf("%d, %d, %d, %d, %f\n", row, i, threadIdx.y, threadIdx.x, A[row * numAColumns + i * TILE_WIDTH + threadIdx.x]);
 		}
