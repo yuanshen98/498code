@@ -146,8 +146,7 @@ __global__ void unrollKernel(int C, int H, int W, int K, float* X, float* X_out)
 #define TILE_WIDTH 32
 #define TILE_WIDTH_FLOAT 32.0
 
-	__constant__ float layer1_weights[12*1*7*7];
-__constant__ float layer2_weights[24*12*7*7];
+__constant__ float weights[24*12*7*7];
 __global__ void matrixMultiplyShared1( float *B, float *C,
 	int numARows, int numAColumns,
 	int numBRows, int numBColumns,
@@ -172,7 +171,7 @@ __global__ void matrixMultiplyShared1( float *B, float *C,
 
 		//each thread loads its bit
 		if (row * numAColumns + i * TILE_WIDTH + threadIdx.x < numARows*numAColumns) {
-			subTileA[threadIdx.y][threadIdx.x] = layer1_weights[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
+			subTileA[threadIdx.y][threadIdx.x] = weights[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
 			//subTileB[threadIdx.y][threadIdx.x] = B[(i * TILE_WIDTH + threadIdx.y) * numBColumns + col];
 			//printf("%d, %d, %d, %d, %f\n", row, i, threadIdx.y, threadIdx.x, A[row * numAColumns + i * TILE_WIDTH + threadIdx.x]);
 		}
@@ -219,7 +218,7 @@ __global__ void matrixMultiplyShared1( float *B, float *C,
 
 		//each thread loads its bit
 		if (row * numAColumns + i * TILE_WIDTH + threadIdx.x < numARows*numAColumns) {
-			subTileA[threadIdx.y][threadIdx.x] = layer2_weights[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
+			subTileA[threadIdx.y][threadIdx.x] = weights[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
 			//subTileB[threadIdx.y][threadIdx.x] = B[(i * TILE_WIDTH + threadIdx.y) * numBColumns + col];
 			//printf("%d, %d, %d, %d, %f\n", row, i, threadIdx.y, threadIdx.x, A[row * numAColumns + i * TILE_WIDTH + threadIdx.x]);
 		}
@@ -262,10 +261,10 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int K = w.shape_[3];
     //__constant__ float weights[M*C*K*K];
     if (C == 1){
-    MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(layer1_weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
+    MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
     }
     else {
-    MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(layer2_weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
+    MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
     }
 //std::cout<<"M, C, K"<<M<<C<<K<<"\n";
 	float* dev_X_out;
