@@ -146,8 +146,8 @@ __global__ void unrollKernel(int C, int H, int W, int K, float* X, float* X_out)
 #define TILE_WIDTH 32
 #define TILE_WIDTH_FLOAT 32.0
 
-__constant__ float weights[24*12*7*7];
-__global__ void matrixMultiplyShared1( float *B, float *C,
+
+__global__ void matrixMultiplyShared(float *A, float *B, float *C,
 	int numARows, int numAColumns,
 	int numBRows, int numBColumns,
 	int numCRows, int numCColumns) {
@@ -171,7 +171,7 @@ __global__ void matrixMultiplyShared1( float *B, float *C,
 
 		//each thread loads its bit
 		if (row * numAColumns + i * TILE_WIDTH + threadIdx.x < numARows*numAColumns) {
-			subTileA[threadIdx.y][threadIdx.x] = weights[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
+			subTileA[threadIdx.y][threadIdx.x] = A[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
 			//subTileB[threadIdx.y][threadIdx.x] = B[(i * TILE_WIDTH + threadIdx.y) * numBColumns + col];
 			//printf("%d, %d, %d, %d, %f\n", row, i, threadIdx.y, threadIdx.x, A[row * numAColumns + i * TILE_WIDTH + threadIdx.x]);
 		}
@@ -194,52 +194,7 @@ __global__ void matrixMultiplyShared1( float *B, float *C,
 	}
 }
 	
-	__global__ void matrixMultiplyShared2( float *B, float *C,
-	int numARows, int numAColumns,
-	int numBRows, int numBColumns,
-	int numCRows, int numCColumns) {
-
-	__shared__ float subTileA[TILE_WIDTH][TILE_WIDTH];
-	__shared__ float subTileB[TILE_WIDTH][TILE_WIDTH];
-
-	int row = blockIdx.y * TILE_WIDTH + threadIdx.y;
-	int col = blockIdx.x * TILE_WIDTH + threadIdx.x;
-
-	float multVal = 0;
-
-	//printf("%d %d\n", numAColumns, numAColumns/16);
-
-	//if((row * numCColumns + col) < (numCRows*numCColumns)) {
-
-	//printf("row %d col %d \n", row, col);
-
-	//compute the number of tiles needed 
-	for (int i = 0; i < ceilf(numAColumns / TILE_WIDTH_FLOAT); i++) {
-
-		//each thread loads its bit
-		if (row * numAColumns + i * TILE_WIDTH + threadIdx.x < numARows*numAColumns) {
-			subTileA[threadIdx.y][threadIdx.x] = weights[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
-			//subTileB[threadIdx.y][threadIdx.x] = B[(i * TILE_WIDTH + threadIdx.y) * numBColumns + col];
-			//printf("%d, %d, %d, %d, %f\n", row, i, threadIdx.y, threadIdx.x, A[row * numAColumns + i * TILE_WIDTH + threadIdx.x]);
-		}
-		if ((i * TILE_WIDTH + threadIdx.y) * numBColumns + col < numBRows*numBColumns) {
-			subTileB[threadIdx.y][threadIdx.x] = B[(i * TILE_WIDTH + threadIdx.y) * numBColumns + col];
-		}
-
-		__syncthreads();
-		if (row < numCRows && col < numCColumns) {
-			for (int j = 0; j < TILE_WIDTH; j++) {
-				if (i*TILE_WIDTH + j < numAColumns) {
-					//printf("%d, %d, %f, %f\n", threadIdx.y, threadIdx.x, subTileA[threadIdx.y][j], subTileB[j][threadIdx.x]);
-					multVal += subTileA[threadIdx.y][j] * subTileB[j][threadIdx.x];
-				}
-			}
-			C[row*numCColumns + col] = multVal;
-		}
-		__syncthreads();
-
-	}
-}
+	
 /* 
    This function is called by new-inl.h
    Any code you write should be executed by this function.
@@ -264,7 +219,7 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
 //std::cout<<"M, C, K"<<M<<C<<K<<"\n";
 	float* dev_X_out;
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
-	MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
+
 	MSHADOW_CUDA_CALL(cudaMalloc((void**)&dev_X_out, (size_t)((H - K + 1)*(W - K + 1)*K*K*C * sizeof(float))));
 	
 	dim3 unrollBlockDim(1024, 1, 1);
@@ -286,7 +241,7 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
 
 		//multiply first by second
 		
-		matrixMultiplyShared1 << < mulGridDim, mulBlockDim >> > (dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
+		matrixMultiplyShared << < mulGridDim, mulBlockDim >> > (dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
 		
 		
 		}
