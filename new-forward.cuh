@@ -260,12 +260,7 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int W = x.shape_[3];
     const int K = w.shape_[3];
     //__constant__ float weights[M*C*K*K];
-    if (C == 1){
     MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
-    }
-    else {
-    MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
-    }
 //std::cout<<"M, C, K"<<M<<C<<K<<"\n";
 	float* dev_X_out;
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
@@ -283,7 +278,7 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
 	dim3 mulGridDim(ceilf((H_out*W_out) / TILE_WIDTH_FLOAT), ceilf(M / TILE_WIDTH_FLOAT), 1);
 
 	//for everything in batch
-	if (C == 1){
+
 	for (int b = 0; b < B; b++) {
 		//unroll
 		unrollKernel << < unrollGridDim, unrollBlockDim >> > (C, H, W, K, x.dptr_ + b*H*W*C, dev_X_out);
@@ -294,19 +289,7 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
 		
 		
 		}
-	}
-	else {
-	for (int b = 0; b < B; b++) {
-		//unroll
-		unrollKernel << < unrollGridDim, unrollBlockDim >> > (C, H, W, K, x.dptr_ + b*H*W*C, dev_X_out);
 
-		//multiply first by second
-		
-		matrixMultiplyShared2 << < mulGridDim, mulBlockDim >> > (dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
-		
-		
-		}
-	}
     //forward_kernel1<<<gridDim1,blockDim1>>>(w.dptr_, X_unroll, y.dptr_+b*M*H_out*W_out, M, C*K*K, C*K*K, H_out*W_out, M, H_out*W_out);
  	   //forward_kernel<<<gridDim, blockDim>>>(y.dptr_, x.dptr_, w.dptr_, B, M, C, H, W, K);
 	MSHADOW_CUDA_CALL(cudaFree(dev_X_out));
