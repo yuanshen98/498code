@@ -260,10 +260,11 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int W = x.shape_[3];
     const int K = w.shape_[3];
     //__constant__ float weights[M*C*K*K];
-    MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
+    
 //std::cout<<"M, C, K"<<M<<C<<K<<"\n";
 	float* dev_X_out;
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
+	MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
 	MSHADOW_CUDA_CALL(cudaMalloc((void**)&dev_X_out, (size_t)((H - K + 1)*(W - K + 1)*K*K*C * sizeof(float))));
 	
 	dim3 unrollBlockDim(1024, 1, 1);
