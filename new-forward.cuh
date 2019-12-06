@@ -241,7 +241,7 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
 
 		//multiply first by second
 		
-		matrixMultiplyShared << < mulGridDim, mulBlockDim >> > (dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
+		matrixMultiplyShared << < mulGridDim, mulBlockDim >> > (w.dptr_, dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
 		
 		
 		}
