@@ -146,6 +146,8 @@ __global__ void unrollKernel(int C, int H, int W, int K, float* X, float* X_out)
 #define TILE_WIDTH 32
 #define TILE_WIDTH_FLOAT 32.0
 
+	__constant__ float layer1_weights[12*1*7*7];
+__constant__ float layer2_weights[24*12*7*7];
 __global__ void matrixMultiplyShared1( float *B, float *C,
 	int numARows, int numAColumns,
 	int numBRows, int numBColumns,
@@ -244,8 +246,7 @@ __global__ void matrixMultiplyShared1( float *B, float *C,
    Any code you write should be executed by this function.
    We only expect the float version of the operator to be called, so here we specialize with only floats.
 */
-__constant__ float layer1_weights[12*1*7*7];
-__constant__ float layer2_weights[24*12*7*7];
+
 template <>
 void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tensor<gpu, 4, float> &x, const mshadow::Tensor<gpu, 4, float> &w)
 {
