@@ -146,7 +146,7 @@ __global__ void unrollKernel(int C, int H, int W, int K, float* X, float* X_out)
 #define TILE_WIDTH 32
 #define TILE_WIDTH_FLOAT 32.0
 
-__global__ void matrixMultiplyShared(float *A, float *B, float *C,
+__global__ void matrixMultiplyShared1( float *B, float *C,
 	int numARows, int numAColumns,
 	int numBRows, int numBColumns,
 	int numCRows, int numCColumns) {
@@ -170,7 +170,54 @@ __global__ void matrixMultiplyShared(float *A, float *B, float *C,
 
 		//each thread loads its bit
 		if (row * numAColumns + i * TILE_WIDTH + threadIdx.x < numARows*numAColumns) {
-			subTileA[threadIdx.y][threadIdx.x] = A[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
+			subTileA[threadIdx.y][threadIdx.x] = layer1_weights[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
+			//subTileB[threadIdx.y][threadIdx.x] = B[(i * TILE_WIDTH + threadIdx.y) * numBColumns + col];
+			//printf("%d, %d, %d, %d, %f\n", row, i, threadIdx.y, threadIdx.x, A[row * numAColumns + i * TILE_WIDTH + threadIdx.x]);
+		}
+		if ((i * TILE_WIDTH + threadIdx.y) * numBColumns + col < numBRows*numBColumns) {
+			subTileB[threadIdx.y][threadIdx.x] = B[(i * TILE_WIDTH + threadIdx.y) * numBColumns + col];
+		}
+
+		__syncthreads();
+		if (row < numCRows && col < numCColumns) {
+			for (int j = 0; j < TILE_WIDTH; j++) {
+				if (i*TILE_WIDTH + j < numAColumns) {
+					//printf("%d, %d, %f, %f\n", threadIdx.y, threadIdx.x, subTileA[threadIdx.y][j], subTileB[j][threadIdx.x]);
+					multVal += subTileA[threadIdx.y][j] * subTileB[j][threadIdx.x];
+				}
+			}
+			C[row*numCColumns + col] = multVal;
+		}
+		__syncthreads();
+
+	}
+}
+	
+	__global__ void matrixMultiplyShared2( float *B, float *C,
+	int numARows, int numAColumns,
+	int numBRows, int numBColumns,
+	int numCRows, int numCColumns) {
+
+	__shared__ float subTileA[TILE_WIDTH][TILE_WIDTH];
+	__shared__ float subTileB[TILE_WIDTH][TILE_WIDTH];
+
+	int row = blockIdx.y * TILE_WIDTH + threadIdx.y;
+	int col = blockIdx.x * TILE_WIDTH + threadIdx.x;
+
+	float multVal = 0;
+
+	//printf("%d %d\n", numAColumns, numAColumns/16);
+
+	//if((row * numCColumns + col) < (numCRows*numCColumns)) {
+
+	//printf("row %d col %d \n", row, col);
+
+	//compute the number of tiles needed 
+	for (int i = 0; i < ceilf(numAColumns / TILE_WIDTH_FLOAT); i++) {
+
+		//each thread loads its bit
+		if (row * numAColumns + i * TILE_WIDTH + threadIdx.x < numARows*numAColumns) {
+			subTileA[threadIdx.y][threadIdx.x] = layer2_weights[row * numAColumns + i * TILE_WIDTH + threadIdx.x];
 			//subTileB[threadIdx.y][threadIdx.x] = B[(i * TILE_WIDTH + threadIdx.y) * numBColumns + col];
 			//printf("%d, %d, %d, %d, %f\n", row, i, threadIdx.y, threadIdx.x, A[row * numAColumns + i * TILE_WIDTH + threadIdx.x]);
 		}
@@ -197,6 +244,8 @@ __global__ void matrixMultiplyShared(float *A, float *B, float *C,
    Any code you write should be executed by this function.
    We only expect the float version of the operator to be called, so here we specialize with only floats.
 */
+__constant__ float layer1_weights[12*1*7*7];
+__constant__ float layer2_weights[24*12*7*7];
 template <>
 void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tensor<gpu, 4, float> &x, const mshadow::Tensor<gpu, 4, float> &w)
 {
@@ -211,8 +260,13 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     const int W = x.shape_[3];
     const int K = w.shape_[3];
     //__constant__ float weights[M*C*K*K];
-    //MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
-std::cout<<"M, C, K"<<M<<C<<K<<"\n";
+    if (C == 1){
+    MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(layer1_weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
+    }
+    else {
+    MSHADOW_CUDA_CALL(cudaMemcpyToSymbol(layer2_weights, w.dptr_, (size_t)(M*C*K*K*sizeof(float)), cudaMemcpyDeviceToDevice));
+    }
+//std::cout<<"M, C, K"<<M<<C<<K<<"\n";
 	float* dev_X_out;
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
 	MSHADOW_CUDA_CALL(cudaMalloc((void**)&dev_X_out, (size_t)((H - K + 1)*(W - K + 1)*K*K*C * sizeof(float))));
@@ -229,14 +283,30 @@ std::cout<<"M, C, K"<<M<<C<<K<<"\n";
 	dim3 mulGridDim(ceilf((H_out*W_out) / TILE_WIDTH_FLOAT), ceilf(M / TILE_WIDTH_FLOAT), 1);
 
 	//for everything in batch
+	if (C == 1){
 	for (int b = 0; b < B; b++) {
 		//unroll
 		unrollKernel << < unrollGridDim, unrollBlockDim >> > (C, H, W, K, x.dptr_ + b*H*W*C, dev_X_out);
 
 		//multiply first by second
-		matrixMultiplyShared << < mulGridDim, mulBlockDim >> > (w.dptr_, dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
+		
+		matrixMultiplyShared1 << < mulGridDim, mulBlockDim >> > (dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
+		
+		
+		}
 	}
+	else {
+	for (int b = 0; b < B; b++) {
+		//unroll
+		unrollKernel << < unrollGridDim, unrollBlockDim >> > (C, H, W, K, x.dptr_ + b*H*W*C, dev_X_out);
 
+		//multiply first by second
+		
+		matrixMultiplyShared2 << < mulGridDim, mulBlockDim >> > (dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
+		
+		
+		}
+	}
     //forward_kernel1<<<gridDim1,blockDim1>>>(w.dptr_, X_unroll, y.dptr_+b*M*H_out*W_out, M, C*K*K, C*K*K, H_out*W_out, M, H_out*W_out);
  	   //forward_kernel<<<gridDim, blockDim>>>(y.dptr_, x.dptr_, w.dptr_, B, M, C, H, W, K);
 	MSHADOW_CUDA_CALL(cudaFree(dev_X_out));
