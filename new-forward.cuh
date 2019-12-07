@@ -145,6 +145,23 @@ __global__ void unrollKernel(int C, int H, int W, int K, float* X, float* X_out)
 
 #define TILE_WIDTH 32
 #define TILE_WIDTH_FLOAT 32.0
+	
+__global__ void matrixMultiply(float *A, float *B, float *C, int numARows,
+                               int numAColumns, int numBRows,
+                               int numBColumns, int numCRows,
+                               int numCColumns) {
+  
+  int threadNum = blockIdx.x * blockDim.x + threadIdx.x;
+  int aRow = threadNum / numCColumns;
+  int bCol = threadNum % numCColumns;
+  if(threadNum < numCRows * numCColumns){
+    C[threadNum] = 0;
+    //@@ Insert code to implement matrix multiplication here
+    for (unsigned i = 0; i < numAColumns; i++){
+      C[threadNum] += A[aRow * numAColumns + i] * B[i * numBColumns + bCol];
+    }
+  }
+}
 
 
 __global__ void matrixMultiplyShared(float *A, float *B, float *C,
@@ -241,7 +258,8 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
 
 		//multiply first by second
 		
-		matrixMultiplyShared << < mulGridDim, mulBlockDim >> > (w.dptr_, dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
+		//matrixMultiplyShared << < mulGridDim, mulBlockDim >> > (w.dptr_, dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
+		matrixMultiply << < ceilf(M*H_out*W_out/1024.0), 1024 >> > (w.dptr_, dev_X_out, y.dptr_ + b*M*H_out*W_out, M, inner_dim, inner_dim, H_out*W_out, M, H_out*W_out);
 		
 		
 		}
